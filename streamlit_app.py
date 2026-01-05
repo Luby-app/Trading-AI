@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from signal import get_all_signals
+from trading_signal import get_all_signals
 from utils import calc_indicators
 from config import interval
 
