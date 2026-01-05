@@ -12,9 +12,9 @@ st.title("AI Trading Signals - CFD")
 # ============================
 # Real-time refresh
 # ============================
-st_autorefresh = st.experimental_data_editor if hasattr(st, "experimental_data_editor") else None
 refresh_interval = 60  # sekundy
-st.experimental_rerun() if st_autorefresh else None
+st_autorefresh = st.experimental_rerun  # spouští refresh
+st_autorefresh()  # volitelně automatický refresh
 
 # ============================
 # Načtení signálů
@@ -35,15 +35,11 @@ else:
     st.subheader("Graf cen + indikátory")
     selected_instrument = st.selectbox("Vyber instrument:", df_signals['instrument'])
 
-    # Najdi ticker podle názvu
-    ticker = [k for k,v in signals[0].items() if v == selected_instrument]
-    if not ticker:
-        ticker = None
-    else:
-        ticker = ticker[0]
+    # Správné získání tickeru
+    selected_row = df_signals[df_signals['instrument'] == selected_instrument]
+    if not selected_row.empty:
+        ticker = selected_row['ticker'].values[0]
 
-    if ticker:
-        # Stažení dat pro graf
         import yfinance as yf
         data = yf.download(ticker, period="5d", interval=interval)
         close = data['Close'].squeeze()
@@ -56,11 +52,11 @@ else:
         fig.add_trace(go.Scatter(x=data.index, y=data['EMA10'], mode='lines', name='EMA10', line=dict(color='blue')))
         fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], mode='lines', name='EMA50', line=dict(color='orange')))
 
-        # MACD + signal v odděleném subplotu
+        # MACD + signal
         fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], mode='lines', name='MACD', yaxis='y2', line=dict(color='green')))
         fig.add_trace(go.Scatter(x=data.index, y=data['MACD_signal'], mode='lines', name='MACD Signal', yaxis='y2', line=dict(color='red')))
 
-        # RSI v třetím subplotu
+        # RSI
         fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], mode='lines', name='RSI', yaxis='y3', line=dict(color='purple')))
 
         fig.update_layout(
