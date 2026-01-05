@@ -16,14 +16,13 @@ st.title("AI Trading Signals - CFD")
 # ============================
 # Tlačítko pro manuální refresh
 # ============================
-if st.button("Aktualizovat signály"):
-    st.experimental_rerun()
+refresh_clicked = st.button("Aktualizovat signály")
 
 # ============================
 # Načtení signálů
 # ============================
 st.subheader("Aktuální signály")
-signals = get_all_signals()
+signals = get_all_signals()  # vždy se zavolá při načtení nebo po kliknutí
 
 if not signals:
     st.warning("Žádné silné signály pro tento okamžik.")
