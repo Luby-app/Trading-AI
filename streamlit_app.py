@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from trading_signal import get_all_signals
 from utils import calc_indicators
 from config import interval
+import time
 
 # ============================
 # Nastavení stránky
@@ -15,10 +16,9 @@ st.title("AI Trading Signals - CFD")
 # ============================
 # Real-time refresh každých 60 sekund
 # ============================
-from streamlit_autorefresh import st_autorefresh
-
-# interval v ms (60 000 ms = 60 sekund)
-count = st_autorefresh(interval=60 * 1000, limit=None, key="refresh")
+refresh_interval = 60  # sekundy
+time.sleep(refresh_interval)
+st.experimental_rerun()
 
 # ============================
 # Načtení signálů
