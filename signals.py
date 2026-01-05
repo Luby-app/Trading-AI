@@ -1,46 +1,10 @@
+# signal.py
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from ta.trend import EMAIndicator, MACD
-from ta.momentum import RSIIndicator
 from sklearn.ensemble import RandomForestClassifier
-
-# ============================
-# INSTRUMENTY
-# ============================
-# ticker: název
-instrument_names = {
-    "^N225": "JP225",
-    "EUR=X": "EU50",
-    "CC=F": "COCOA",
-    "SI=F": "SILVER",
-    "GC=F": "GOLD",
-    "CL=F": "CRUDE OIL",
-    "NG=F": "NAT GAS",
-    "ZC=F": "CORN",
-    "ZS=F": "SOYBEAN",
-    "ZW=F": "WHEAT",
-    "SB=F": "SUGAR",
-    "HG=F": "COPPER",
-    "PL=F": "PLATINUM",
-    "PA=F": "PALLADIUM",
-    "RB=F": "RBOB GASOLINE",
-    # poslední HG=F duplicate → COPPER již zahrnuto
-}
-
-instruments = list(instrument_names.keys())
-
-# odpovídající investice pro XTB CFD (při objemu 0.01)
-trade_risks = [
-    1678, 710, 1215, 7479,
-    2000, 1500, 1200, 1000,
-    1100, 950, 800, 1300,
-    2500, 2700, 1800
-]
-
-lookback_days = 30
-interval = "30m"
-prob_threshold = 80  # filtr silných signálů
+from utils import calc_indicators, calc_SL_TP
+from config import instruments, instrument_names, trade_risks, lookback_days, interval, prob_threshold
 
 # ============================
 # FUNKCE PRO VÝPOČET SIGNÁLU
@@ -48,12 +12,9 @@ prob_threshold = 80  # filtr silných signálů
 def get_signal(symbol, trade_risk_czk):
     """
     Vrací dict se signálem pro jeden instrument:
-    - název instrumentu
-    - aktuální cena
-    - LONG / SHORT / HOLD
-    - SL / TP
-    - pravděpodobnost
-    - odhad profit v CZK
+    - instrument, cena, LONG/SHORT/HOLD
+    - SL/TP v procentech
+    - pravděpodobnost a odhad profit v CZK
     """
     try:
         # Stažení historických dat
@@ -63,42 +24,38 @@ def get_signal(symbol, trade_risk_czk):
 
         close = data['Close'].squeeze()
 
-        # Indikátory
-        data['EMA10'] = EMAIndicator(close, window=10).ema_indicator()
-        data['EMA50'] = EMAIndicator(close, window=50).ema_indicator()
-        data['RSI'] = RSIIndicator(close, window=14).rsi()
-        macd = MACD(close)
-        data['MACD'] = macd.macd()
-        data['MACD_signal'] = macd.macd_signal()
-        data['EMA_diff'] = data['EMA10'] - data['EMA50']
-        data['MACD_diff'] = data['MACD'] - data['MACD_signal']
+        # Výpočet indikátorů přes utilitu
+        data = calc_indicators(data, close)
 
+        # Features pro Random Forest
         features = data[['EMA_diff', 'RSI', 'MACD_diff']].fillna(0)
         data['target'] = np.where(data['Close'].shift(-1) > data['Close'], 1, -1)
 
-        # Model
+        # Trénink modelu (můžeme později přepnout na predikci z natrénovaného modelu)
         model = RandomForestClassifier(n_estimators=150, random_state=42)
         model.fit(features, data['target'])
 
-        latest = features.iloc[-1].values.reshape(1, -1)
-        proba = model.predict_proba(latest)[0]
-        signal = "LONG" if proba[1] > 0.6 else "SHORT" if proba[0] > 0.6 else "HOLD"
-        latest_close = float(data['Close'].iloc[-1])
-        probability_percent = max(proba) * 100
+        latest_features = features.iloc[-1].values.reshape(1, -1)
+        proba = model.predict_proba(latest_features)[0]
+        # Kontrola pořadí tříd
+        class_order = model.classes_
+        if list(class_order) == [-1, 1]:
+            long_prob = proba[1]
+            short_prob = proba[0]
+        else:
+            long_prob = proba[0]
+            short_prob = proba[1]
 
-        # Filtr slabých signálů
+        signal = "LONG" if long_prob > 0.6 else "SHORT" if short_prob > 0.6 else "HOLD"
+        latest_close = float(data['Close'].iloc[-1])
+        probability_percent = max(long_prob, short_prob) * 100
+
+        # Filtrace slabých signálů
         if probability_percent < prob_threshold or signal == "HOLD":
             return None
 
-        # SL / TP
-        if signal == "LONG":
-            sl = latest_close * 0.995  # -0.5%
-            tp = latest_close * 1.015  # +1.5%
-        elif signal == "SHORT":
-            sl = latest_close * 1.005  # +0.5%
-            tp = latest_close * 0.985  # -1.5%
-        else:
-            sl = tp = None
+        # SL / TP v procentech přes utilitu
+        sl, tp = calc_SL_TP(latest_close, signal, sl_pct=0.5, tp_pct=1.5)
 
         # Potenciální profit v CZK
         profit_CZK = abs(tp - latest_close) / latest_close * trade_risk_czk * 1000 if tp and sl else None
@@ -115,6 +72,7 @@ def get_signal(symbol, trade_risk_czk):
 
     except Exception as e:
         return {"instrument": instrument_names.get(symbol, symbol), "error": str(e)}
+
 
 # ============================
 # FUNKCE PRO VŠECHNY INSTRUMENTY
