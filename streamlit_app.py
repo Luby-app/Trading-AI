@@ -1,40 +1,74 @@
+# streamlit_app.py
 import streamlit as st
-from signals import get_all_signals
+import pandas as pd
+import plotly.graph_objects as go
+from signal import get_all_signals
+from utils import calc_indicators
+from config import interval
 
-st.set_page_config(
-    page_title="Trading Signals",
-    page_icon="📈",
-    layout="centered"
-)
-
-st.title("📊 AI Trading Signals")
-
-st.markdown("""
-Tato aplikace zobrazuje aktuální silné signály pro vybrané indexy a komodity.
-Signály generuje Random Forest model s EMA, MACD a RSI indikátory.
-SL = Stop Loss, TP = Take Profit, Profit = odhadovaný zisk v CZK.
-""")
+st.set_page_config(page_title="AI Trading Signals", layout="wide")
+st.title("AI Trading Signals - CFD")
 
 # ============================
-# Získání aktuálních signálů
+# Real-time refresh
 # ============================
-with st.spinner("Generuji signály..."):
-    signals = get_all_signals()
+st_autorefresh = st.experimental_data_editor if hasattr(st, "experimental_data_editor") else None
+refresh_interval = 60  # sekundy
+st.experimental_rerun() if st_autorefresh else None
+
+# ============================
+# Načtení signálů
+# ============================
+st.subheader("Aktuální signály")
+signals = get_all_signals()
 
 if not signals:
-    st.info("Momentálně nejsou žádné silné signály podle nastavené pravděpodobnosti.")
+    st.warning("Žádné silné signály pro tento okamžik.")
 else:
-    # Převod na DataFrame pro hezké zobrazení
-    df = st.dataframe(signals)
+    df_signals = pd.DataFrame(signals)
+    df_display = df_signals[['instrument', 'price', 'signal', 'SL', 'TP', 'probability', 'profit_CZK']]
+    st.dataframe(df_display, use_container_width=True)
 
-    st.markdown(f"Celkem silných signálů: **{len(signals)}**")
+    # ============================
+    # Graf pro vybraný instrument
+    # ============================
+    st.subheader("Graf cen + indikátory")
+    selected_instrument = st.selectbox("Vyber instrument:", df_signals['instrument'])
 
-    # Doporučený top signál (nejvyšší pravděpodobnost)
-    top_signal = max(signals, key=lambda x: x.get("probability", 0))
-    st.subheader("💡 Nejpravděpodobnější obchod")
-    st.write(f"Instrument: **{top_signal['instrument']}**")
-    st.write(f"Signál: **{top_signal['signal']}**")
-    st.write(f"Cena: {top_signal['price']:.2f}")
-    st.write(f"SL: {top_signal['SL']:.2f}, TP: {top_signal['TP']:.2f}")
-    st.write(f"Pravděpodobnost: {top_signal['probability']:.2f}%")
-    st.write(f"Odhadovaný profit: {top_signal['profit_CZK']:.2f} CZK")
+    # Najdi ticker podle názvu
+    ticker = [k for k,v in signals[0].items() if v == selected_instrument]
+    if not ticker:
+        ticker = None
+    else:
+        ticker = ticker[0]
+
+    if ticker:
+        # Stažení dat pro graf
+        import yfinance as yf
+        data = yf.download(ticker, period="5d", interval=interval)
+        close = data['Close'].squeeze()
+        data = calc_indicators(data, close)
+
+        fig = go.Figure()
+
+        # Cena + EMA
+        fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Close', line=dict(color='black')))
+        fig.add_trace(go.Scatter(x=data.index, y=data['EMA10'], mode='lines', name='EMA10', line=dict(color='blue')))
+        fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], mode='lines', name='EMA50', line=dict(color='orange')))
+
+        # MACD + signal v odděleném subplotu
+        fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], mode='lines', name='MACD', yaxis='y2', line=dict(color='green')))
+        fig.add_trace(go.Scatter(x=data.index, y=data['MACD_signal'], mode='lines', name='MACD Signal', yaxis='y2', line=dict(color='red')))
+
+        # RSI v třetím subplotu
+        fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], mode='lines', name='RSI', yaxis='y3', line=dict(color='purple')))
+
+        fig.update_layout(
+            yaxis=dict(title="Cena"),
+            yaxis2=dict(title="MACD", overlaying='y', side='right'),
+            yaxis3=dict(title="RSI", overlaying='y', side='left', position=0.15),
+            legend=dict(orientation="h"),
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
