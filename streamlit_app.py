@@ -6,15 +6,19 @@ from trading_signal import get_all_signals
 from utils import calc_indicators
 from config import interval
 
+# ============================
+# Nastavení stránky
+# ============================
 st.set_page_config(page_title="AI Trading Signals", layout="wide")
 st.title("AI Trading Signals - CFD")
 
 # ============================
-# Real-time refresh
+# Real-time refresh každých 60 sekund
 # ============================
-refresh_interval = 60  # sekundy
-st_autorefresh = st.experimental_rerun  # spouští refresh
-st_autorefresh()  # volitelně automatický refresh
+from streamlit_autorefresh import st_autorefresh
+
+# interval v ms (60 000 ms = 60 sekund)
+count = st_autorefresh(interval=60 * 1000, limit=None, key="refresh")
 
 # ============================
 # Načtení signálů
@@ -42,29 +46,30 @@ else:
 
         import yfinance as yf
         data = yf.download(ticker, period="5d", interval=interval)
-        close = data['Close'].squeeze()
-        data = calc_indicators(data, close)
+        if not data.empty:
+            close = data['Close'].squeeze()
+            data = calc_indicators(data, close)
 
-        fig = go.Figure()
+            fig = go.Figure()
 
-        # Cena + EMA
-        fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Close', line=dict(color='black')))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA10'], mode='lines', name='EMA10', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], mode='lines', name='EMA50', line=dict(color='orange')))
+            # Cena + EMA
+            fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Close', line=dict(color='black')))
+            fig.add_trace(go.Scatter(x=data.index, y=data['EMA10'], mode='lines', name='EMA10', line=dict(color='blue')))
+            fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], mode='lines', name='EMA50', line=dict(color='orange')))
 
-        # MACD + signal
-        fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], mode='lines', name='MACD', yaxis='y2', line=dict(color='green')))
-        fig.add_trace(go.Scatter(x=data.index, y=data['MACD_signal'], mode='lines', name='MACD Signal', yaxis='y2', line=dict(color='red')))
+            # MACD + signal
+            fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], mode='lines', name='MACD', yaxis='y2', line=dict(color='green')))
+            fig.add_trace(go.Scatter(x=data.index, y=data['MACD_signal'], mode='lines', name='MACD Signal', yaxis='y2', line=dict(color='red')))
 
-        # RSI
-        fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], mode='lines', name='RSI', yaxis='y3', line=dict(color='purple')))
+            # RSI
+            fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], mode='lines', name='RSI', yaxis='y3', line=dict(color='purple')))
 
-        fig.update_layout(
-            yaxis=dict(title="Cena"),
-            yaxis2=dict(title="MACD", overlaying='y', side='right'),
-            yaxis3=dict(title="RSI", overlaying='y', side='left', position=0.15),
-            legend=dict(orientation="h"),
-            margin=dict(l=40, r=40, t=40, b=40)
-        )
+            fig.update_layout(
+                yaxis=dict(title="Cena"),
+                yaxis2=dict(title="MACD", overlaying='y', side='right'),
+                yaxis3=dict(title="RSI", overlaying='y', side='left', position=0.15),
+                legend=dict(orientation="h"),
+                margin=dict(l=40, r=40, t=40, b=40)
+            )
 
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
