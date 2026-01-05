@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from trading_signal import get_all_signals
 from utils import calc_indicators
 from config import interval
-import time
+import yfinance as yf
 
 # ============================
 # Nastavení stránky
@@ -14,11 +14,10 @@ st.set_page_config(page_title="AI Trading Signals", layout="wide")
 st.title("AI Trading Signals - CFD")
 
 # ============================
-# Real-time refresh každých 60 sekund
+# Tlačítko pro manuální refresh
 # ============================
-refresh_interval = 60  # sekundy
-time.sleep(refresh_interval)
-st.experimental_rerun()
+if st.button("Aktualizovat signály"):
+    st.experimental_rerun()
 
 # ============================
 # Načtení signálů
@@ -44,7 +43,6 @@ else:
     if not selected_row.empty:
         ticker = selected_row['ticker'].values[0]
 
-        import yfinance as yf
         data = yf.download(ticker, period="5d", interval=interval)
         if not data.empty:
             close = data['Close'].squeeze()
