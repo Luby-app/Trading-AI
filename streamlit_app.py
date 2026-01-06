@@ -1,39 +1,36 @@
-# streamlit_app.py
 import streamlit as st
-import pandas as pd
-from trading_signal import get_all_signals
+import json
+from datetime import datetime
 
-# ============================
-# Nastavení stránky
-# ============================
-st.set_page_config(page_title="AI Trading Signals", layout="wide")
-st.title("AI Trading Signals - CFD")
+st.set_page_config(page_title="Trading AI Signals", layout="centered")
+st.title("📊 Trading AI – Live Signals")
 
-# ============================
-# Tlačítko pro manuální refresh
-# ============================
-st.button("Aktualizovat signály")  # jen spustí refresh, bez experimental_rerun
+@st.cache_data(ttl=300)
+def load_signals():
+    try:
+        with open("signals.json", "r") as f:
+            return json.load(f)
+    except:
+        return []
 
-# ============================
-# Načtení signálů
-# ============================
-st.subheader("Aktuální signály")
-
-signals = get_all_signals()
+signals = load_signals()
 
 if not signals:
-    st.warning("Žádné silné signály pro tento okamžik.")
+    st.info("⏳ Aktuálně nejsou žádné silné signály.")
 else:
-    df_signals = pd.DataFrame(signals)
+    st.success(f"🔥 Aktivní silné signály: {len(signals)}")
 
-    # Doplnit chybějící sloupce pro bezpečnost
-    expected_columns = ['instrument', 'price', 'signal', 'SL', 'TP', 'probability', 'profit_CZK']
-    for col in expected_columns:
-        if col not in df_signals.columns:
-            df_signals[col] = None
+    for s in signals[:5]:
+        st.markdown("---")
+        st.subheader(f"{s['name']} – {s['signal']}")
 
-    # Vybrat jen potřebné sloupce
-    df_display = df_signals[expected_columns]
+        st.write(f"**Confidence:** {int(s['confidence']*100)} %")
+        st.write(f"**SL:** {round(s['sl_pct']*100,2)} %")
+        st.write(f"**TP:** {round(s['tp_pct']*100,2)} %")
 
-    # Zobrazit tabulku
-    st.dataframe(df_display, use_container_width=True)
+        if "profit_czk" in s:
+            st.write(f"💰 Potenciál: {int(s['profit_czk'])} CZK")
+        if "risk_czk" in s:
+            st.write(f"⚠️ Riziko: {int(s['risk_czk'])} CZK")
+
+st.caption(f"Last refresh: {datetime.now().strftime('%H:%M:%S')}")
